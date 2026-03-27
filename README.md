@@ -2,7 +2,6 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python Version">
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/AI-Gemini%20|%20Claude-orange.svg" alt="AI Powered">
   <img src="https://img.shields.io/badge/Framework-FastAPI-009688.svg" alt="FastAPI">
 </p>
