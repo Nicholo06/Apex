@@ -26,17 +26,28 @@ async def exfiltrate_data(package_name: str):
 
 @app.post("/scan")
 async def scan_apk(file: UploadFile = File(...)):
-    # Save the uploaded file
-    apk_path = os.path.join("temp_decompiled", file.filename)
-    with open(apk_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        # Sanitize filename (remove spaces)
+        safe_filename = file.filename.replace(" ", "_")
+        apk_path = os.path.join("temp_decompiled", safe_filename)
+        
+        # Ensure directory exists
+        if not os.path.exists("temp_decompiled"):
+            os.makedirs("temp_decompiled")
+            
+        with open(apk_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
-    scanner = APKScanner(apk_path)
-    if scanner.decompile():
-        findings = scanner.find_security_logic()
-        return {"status": "success", "findings": findings}
-    else:
-        raise HTTPException(status_code=500, detail="Decompilation failed")
+        scanner = APKScanner(apk_path)
+        if scanner.decompile():
+            findings = scanner.find_security_logic()
+            return {"status": "success", "findings": findings}
+        else:
+            raise HTTPException(status_code=500, detail="Decompilation failed. Check if Java is installed and pyapktool is working.")
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/scripts")
 async def list_scripts():
