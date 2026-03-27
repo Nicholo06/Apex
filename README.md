@@ -6,7 +6,6 @@
   <img src="https://img.shields.io/badge/AI-Claude-orange.svg?logo=anthropic&logoColor=white" alt="Claude">
   <img src="https://img.shields.io/badge/AI-OpenAI-black.svg?logo=openai&logoColor=white" alt="OpenAI">
   <img src="https://img.shields.io/badge/FastAPI-009688.svg?logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
 </p>
 
 **APex** is an advanced Android security orchestration suite designed to bridge the gap between static analysis and dynamic instrumentation. By integrating Large Language Models (LLMs) directly into the reverse-engineering workflow, APex automates the discovery and bypassing of complex security controls like SSL pinning and root detection.
