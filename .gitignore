@@ -10,3 +10,4 @@ downloads/
 *.egg-info/
 build/
 dist/
+apktool.jar

@@ -8,79 +8,180 @@ import subprocess
 from backend.core.scanner import APKScanner
 from backend.core.dynamic import FridaOrchestrator
 from backend.core.dumper import ADBDumper
+from backend.core.utils import AndroidUtils
 from backend.ai.provider import AIProviderFactory
 from backend.config import config
 
 # --- UI Styling ---
-def clr(text, color_code):
-    return f"\033[{color_code}m{text}\033[0m"
+def clr(text, color_code=None):
+    return text
+
+def strip_ansi(text):
+    return text
+
+def get_indent(text_len=20):
+    width = shutil.get_terminal_size().columns
+    # Use a fixed indentation that feels "centered" as a block but is left-aligned
+    # 1/4 of terminal width is a good balance
+    return max(0, (width - 60) // 2)
+
+def left_print(text, color_code=None):
+    indent = get_indent()
+    print(" " * indent + text)
+
+def centered_print(text, color_code=None):
+    width = shutil.get_terminal_size().columns
+    padding = (width - len(text)) // 2
+    if padding < 0: padding = 0
+    print(" " * padding + text)
+
+BANNER = r"""
+   ___    ____           
+  /   |  / __ \___  _  __
+ / /| | / /_/ / _ \| |/_/
+/ ___ |/ ____/  __/>  <  
+/_/  |_/_/    \___/_/|_|
+"""
 
 def print_header():
     width = shutil.get_terminal_size().columns
-    print("\n" + clr("=" * 60, "96").center(width))
-    print(clr("🛡️  APEX: AI-Powered APK Explorer & Exfiltrator", "96;1").center(width))
-    print(clr("=" * 60, "96").center(width) + "\n")
+    lines = BANNER.strip("\n").split("\n")
+    # Find the longest line to center the whole block
+    max_len = max(len(line) for line in lines)
+    indent = (width - max_len) // 2
+    if indent < 0: indent = 0
+    
+    for line in lines:
+        print(" " * indent + line)
+    print("\n")
+
+def left_input(prompt_text, color=None):
+    indent = get_indent()
+    return input(" " * indent + prompt_text).strip()
 
 def check_dependencies():
     """Check if Java is installed since pyapktool needs it"""
     try:
         subprocess.run(["java", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
     except FileNotFoundError:
-        print(clr("[!] Warning: Java (JRE) not found. APK scanning will fail.", "91"))
+        left_print("[!] Warning: Java (JRE) not found. APK scanning will fail.")
+
+def select_device():
+    devices = AndroidUtils.list_devices()
+    if not devices:
+        left_print("[-] No USB devices found via Frida.")
+        return None
+    
+    if len(devices) == 1:
+        return devices[0]
+    
+    left_print("\n[ SELECT DEVICE ]")
+    for i, d in enumerate(devices):
+        left_print(f"{i+1}. {d.name} ({d.id})")
+    
+    choice = left_input("Select device number (default 1): ")
+    try:
+        idx = int(choice) - 1
+        if 0 <= idx < len(devices): return devices[idx]
+    except: pass
+    return devices[0]
+
+def select_package(device_id=None):
+    query = left_input("Search package (enter to list all): ")
+    if query:
+        packages = AndroidUtils.search_packages(query, device_id)
+    else:
+        packages = AndroidUtils.list_packages(device_id)
+    
+    if not packages:
+        left_print("[-] No packages found.")
+        return left_input("Enter package name manually: ")
+
+    left_print("\n[ SELECT PACKAGE ]")
+    display_limit = 10
+    for i, p in enumerate(packages[:display_limit]):
+        left_print(f"{i+1}. {p}")
+    
+    if len(packages) > display_limit:
+        left_print(f"... and {len(packages) - display_limit} more.")
+
+    choice = left_input("Select number or enter manual name: ")
+    try:
+        idx = int(choice) - 1
+        if 0 <= idx < len(packages): return packages[idx]
+    except: pass
+    return choice if choice else None
 
 def interactive_menu():
     check_dependencies()
+    current_device = None
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print_header()
-        width = shutil.get_terminal_size().columns
         
-        # Center the menu as a consistent block
+        if current_device:
+            left_print(f"Connected Device: {current_device.name} ({current_device.id})")
+            left_print("-" * 20)
+
+        left_print("[ MAIN MENU ]")
         menu_items = [
-            clr("[ MAIN MENU ]", "93"),
-            "1. 🔍 Scan APK (Static Analysis)",
-            "2. 💉 Inject Frida Script (Dynamic)",
-            "3. 🤖 Generate AI Bypass Hook",
-            "4. 💾 Exfiltrate App Data (ADB)",
-            "5. 📜 List Local Scripts",
-            "0. 🚪 Exit"
+            "1. Scan APK (Static Analysis)",
+            "2. Inject Frida Script (Dynamic)",
+            "3. Generate AI Bypass Hook",
+            "4. Exfiltrate App Data (ADB)",
+            "5. List Local Scripts",
+            "6. Select/Change Device",
+            "0. Exit"
         ]
         
-        # Calculate indentation for the whole block to be centered
-        # Max length of menu items (ignoring color codes) is around 40
         for item in menu_items:
-            print(item.center(width))
+            left_print(item)
             
-        print("\n" + clr("-" * 20, "90").center(width))
+        print("")
+        left_print("-" * 20)
         
-        choice = input(clr("\nSelect an option > ", "92")).strip()
+        choice = left_input("Select an option > ")
 
         if choice == '1':
-            path = input(clr("Enter APK path: ", "94")).strip()
+            path = left_input("Enter APK path: ")
             if os.path.exists(path):
                 scanner = APKScanner(path)
                 if scanner.decompile():
                     findings = scanner.find_security_logic()
-                    print(clr("\n[+] Findings:", "92"))
+                    left_print("\n[+] Findings:")
                     if not findings:
-                        print("No specific security patterns found.")
+                        left_print("No specific security patterns found.")
                     else:
                         print(json.dumps(findings, indent=2))
-                else: print(clr("[-] Decompilation failed.", "91"))
-            else: print(clr("[-] File not found.", "91"))
+                else: left_print("[-] Decompilation failed.")
+            else: left_print("[-] File not found.")
 
         elif choice == '2':
-            pkg = input(clr("Enter Package Name: ", "94")).strip()
-            script = input(clr("Enter Script Name: ", "94")).strip()
-            orch = FridaOrchestrator(pkg)
-            if orch.attach_and_inject(script): print(clr("[+] Injection Success!", "92"))
-            else: print(clr("[-] Injection Failed.", "91"))
+            if not current_device: current_device = select_device()
+            if not current_device:
+                left_input("Press Enter to continue...")
+                continue
+            
+            ok, msg = AndroidUtils.verify_frida_environment(current_device)
+            if not ok:
+                left_print(f"[-] {msg}")
+                if not AndroidUtils.is_rooted(current_device.id):
+                    left_print("[!] Device appears to be UNROOTED (Jailed). Frida standard attachment may fail.")
+                left_input("Press Enter to continue anyway...")
+
+            pkg = select_package(current_device.id)
+            if not pkg: continue
+            
+            script = left_input("Enter Script Name: ")
+            orch = FridaOrchestrator(pkg, device=current_device)
+            if orch.attach_and_inject(script): left_print("[+] Injection Success!")
+            else: left_print("[-] Injection Failed.")
 
         elif choice == '3':
-            file_path = input(clr("Enter path to Smali snippet file: ", "94")).strip()
+            file_path = left_input("Enter path to Smali snippet file: ")
             if os.path.exists(file_path):
                 with open(file_path, 'r') as f: code = f.read()
-                cat = input(clr("Category (default: ssl_pinning): ", "94")).strip() or "ssl_pinning"
+                cat = left_input("Category (default: ssl_pinning): ") or "ssl_pinning"
                 try:
                     provider = AIProviderFactory.get_provider()
                     hook = provider.generate_hook(code, cat)
@@ -88,30 +189,41 @@ def interactive_menu():
                     if not os.path.exists(config.FRIDA_SCRIPTS_PATH):
                         os.makedirs(config.FRIDA_SCRIPTS_PATH)
                     with open(out, "w") as f: f.write(hook)
-                    print(clr(f"\n[+] Saved to {out}\n", "92") + clr(hook, "93"))
-                except Exception as e: print(clr(f"[-] AI Error: {e}", "91"))
-            else: print(clr("[-] File not found.", "91"))
+                    left_print(f"\n[+] Saved to {out}\n")
+                    print(hook)
+                except Exception as e: left_print(f"[-] AI Error: {e}")
+            else: left_print("[-] File not found.")
 
         elif choice == '4':
-            pkg = input(clr("Enter Package Name: ", "94")).strip()
-            dumper = ADBDumper(pkg)
+            if not current_device: current_device = select_device()
+            if not current_device:
+                left_input("Press Enter to continue...")
+                continue
+            
+            pkg = select_package(current_device.id)
+            if not pkg: continue
+            
+            dumper = ADBDumper(pkg, device_id=current_device.id)
             results = dumper.pull_data()
-            print(clr("\n[+] Exfiltration Results:", "92"))
+            left_print("\n[+] Exfiltration Results:")
             for r in results:
-                status = "✅" if r['status'] == 'pulled' else "❌"
-                print(f"  {status} {r['target']}")
+                status = "DONE" if r['status'] == 'pulled' else "FAIL"
+                left_print(f"  {status} {r['target']}")
 
         elif choice == '5':
             scripts = FridaOrchestrator(None).list_scripts()
-            print(clr("\n[+] Script Library:", "92"))
-            if not scripts: print("  (No scripts found in frida-scripts/)")
-            for s in scripts: print(f"  - {s}")
+            left_print("\n[+] Script Library:")
+            if not scripts: left_print("(No scripts found in frida-scripts/)")
+            for s in scripts: left_print(f"  - {s}")
+
+        elif choice == '6':
+            current_device = select_device()
 
         elif choice == '0':
-            print(clr("Exiting APex...", "96"))
+            left_print("Exiting APex...")
             break
         
-        input(clr("\nPress Enter to return to menu...", "90"))
+        left_input("Press Enter to return to menu...")
 
 def main():
     parser = argparse.ArgumentParser(description="🛡️  APex CLI", add_help=False)
