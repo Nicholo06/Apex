@@ -11,6 +11,9 @@ from backend.core.dumper import ADBDumper
 from backend.ai.provider import AIProviderFactory
 from backend.config import config
 
+# Global indentation
+INDENT = "    "
+
 BANNER = r"""
     /   |  / __ \___  _  __
    / /| | / /_/ / _ \| |/_/
@@ -18,34 +21,30 @@ BANNER = r"""
  /_/  |_/_/    \___/_/|_|  
 """
 
-def get_width():
-    return shutil.get_terminal_size().columns
-
 def print_header():
-    width = get_width()
     print()
+    # Print the banner which already has built-in spacing, plus our indent
     for line in BANNER.split('\n'):
         if line.strip():
-            print(line.center(width))
+            print(INDENT + line)
     print()
 
-def c_input(prompt_text="", show_indicator=True):
-    """Displays a centered prompt and centers the input cursor on the line below it"""
-    width = get_width()
+def c_input(prompt_text="", newline=True):
+    """Displays an indented prompt and returns user input"""
     if prompt_text:
-        print(prompt_text.center(width))
-    
-    indicator = "> " if show_indicator else ""
-    padding = (width - len(indicator)) // 2
-    return input(" " * padding + indicator).strip()
+        if newline:
+            print(INDENT + f"{prompt_text}")
+            return input(INDENT + "> ").strip()
+        else:
+            return input(INDENT + f"{prompt_text} > ").strip()
+    return input(INDENT + "> ").strip()
 
 def interactive_menu():
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print_header()
-        width = get_width()
         
-        print("[ MAIN MENU ]".center(width))
+        print(INDENT + "[ MAIN MENU ]")
         print()
 
         menu_items = [
@@ -59,9 +58,9 @@ def interactive_menu():
         ]
         
         for item in menu_items:
-            print(item.center(width))
+            print(INDENT + item)
             
-        print("\n" + ("-" * 20).center(width))
+        print("\n" + INDENT + "-" * 20)
         
         choice = c_input("Select an option")
 
@@ -73,18 +72,20 @@ def interactive_menu():
                 scanner = APKScanner(path)
                 if scanner.decompile():
                     findings = scanner.find_security_logic()
-                    print()
-                    print("[+] Findings:".center(width))
-                    print(json.dumps(findings, indent=2))
-                else: print("[-] Decompilation failed.".center(width))
-            else: print("[-] File not found.".center(width))
+                    print("\n" + INDENT + "[+] Findings:")
+                    # Indent JSON output
+                    formatted_json = json.dumps(findings, indent=4)
+                    for line in formatted_json.split('\n'):
+                        print(INDENT + line)
+                else: print(INDENT + "[-] Decompilation failed.")
+            else: print(INDENT + "[-] File not found.")
 
         elif choice == '2':
             pkg = c_input("Enter Package Name")
             script = c_input("Enter Script Name")
             orch = FridaOrchestrator(pkg)
-            if orch.attach_and_inject(script): print("[+] Injection Success!".center(width))
-            else: print("[-] Injection Failed.".center(width))
+            if orch.attach_and_inject(script): print(INDENT + "[+] Injection Success!")
+            else: print(INDENT + "[-] Injection Failed.")
 
         elif choice == '3':
             file_path = c_input("Enter path to Smali snippet file")
@@ -98,40 +99,38 @@ def interactive_menu():
                     if not os.path.exists(config.FRIDA_SCRIPTS_PATH):
                         os.makedirs(config.FRIDA_SCRIPTS_PATH)
                     with open(out, "w") as f: f.write(hook)
-                    print()
-                    print(f"[+] Saved to {out}".center(width))
-                    print(hook)
-                except Exception as e: print(f"[-] AI Error: {e}".center(width))
-            else: print("[-] File not found.".center(width))
+                    print(f"\n{INDENT}[+] Saved to {out}")
+                    print(INDENT + "-" * 20)
+                    for line in hook.split('\n'): print(INDENT + line)
+                    print(INDENT + "-" * 20)
+                except Exception as e: print(INDENT + f"[-] AI Error: {e}")
+            else: print(INDENT + "[-] File not found.")
 
         elif choice == '4':
             pkg = c_input("Enter Package Name")
             dumper = ADBDumper(pkg)
             results = dumper.pull_data()
-            print()
-            print("[+] Exfiltration Results:".center(width))
+            print("\n" + INDENT + "[+] Exfiltration Results:")
             for r in results:
                 status = "V" if r['status'] == 'pulled' else "X"
-                print(f"{status} {r['target']}".center(width))
+                print(INDENT + f"  {status} {r['target']}")
 
         elif choice == '5':
             scripts = FridaOrchestrator(None).list_scripts()
-            print()
-            print("[+] Script Library:".center(width))
-            print()
-            if not scripts: print("(No scripts found in frida-scripts/)".center(width))
+            print("\n" + INDENT + "[+] Script Library:\n")
+            if not scripts: print(INDENT + "(No scripts found in frida-scripts/)")
             for s in scripts:
-                print(f"- {s}".center(width))
+                print(INDENT + f"  - {s}")
 
         elif choice == '6':
-            print("[*] Feature coming soon: Select/Change ADB Device".center(width))
+            print(INDENT + "[*] Feature coming soon: Select/Change ADB Device")
 
         elif choice == '0':
-            print("Exiting APex...".center(width))
+            print(INDENT + "Exiting APex...")
             break
         
         print()
-        c_input("Press Enter to return to menu", show_indicator=False)
+        c_input("Press Enter to return to menu", newline=False)
 
 def main():
     parser = argparse.ArgumentParser(description="🛡️  APex CLI", add_help=False)

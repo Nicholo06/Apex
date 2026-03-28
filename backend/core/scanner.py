@@ -2,152 +2,127 @@ import os
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from backend.config import config
 
 class APKScanner:
     def __init__(self, apk_path):
         self.apk_path = apk_path
-        self.output_dir = os.path.join(config.TEMP_DECOMPILED_PATH, os.path.basename(apk_path).replace(".apk", ""))
+        self.output_dir = os.path.normpath(os.path.join(config.TEMP_DECOMPILED_PATH, os.path.basename(apk_path).replace(".apk", "")))
+        self.manifest_path = os.path.join(self.output_dir, "AndroidManifest.xml")
+        self.apktool_jar = os.path.join("pyapktool_tools", "apktool.jar")
 
     def decompile(self):
-        """Decompiles the APK using pyapktool via command line"""
-        print(f"Decompiling {self.apk_path} to {self.output_dir}...")
+        """Decompiles the APK using the managed apktool.jar directly for maximum reliability"""
+        print(f"[*] Decompiling {self.apk_path}...")
+        
         if not os.path.exists(config.TEMP_DECOMPILED_PATH):
             os.makedirs(config.TEMP_DECOMPILED_PATH)
-        
-        # Call pyapktool's Apktool class directly via python -c
+
+        # 1. Ensure the tools are downloaded via pyapktool first (if not already there)
         try:
-            cmd = f"{sys.executable} -c \"from pyapktool.pyapktool import Apktool; a=Apktool('pyapktool_tools'); a.get(); a.unpack(r'{self.apk_path}', r'{self.output_dir}')\""
-            # Since the library itself might need -f but doesn't expose it easily in unpack(),
-            # we check if output_dir exists and clear it if we want to re-decompile.
-            import shutil
-            if os.path.exists(self.output_dir):
-                shutil.rmtree(self.output_dir)
-            subprocess.run(cmd, check=True, shell=True)
-            return True
-        except Exception as e:
-            print(f"Decompilation failed: {e}")
+            import pyapktool.pyapktool as pat
+            # This ensures apktool.jar exists in pyapktool_tools/
+            apktool_obj = pat.Apktool("pyapktool_tools")
+            apktool_obj.get()
+        except ImportError:
+            print("[-] Error: pyapktool package not found.")
             return False
 
+        # 2. Run the jar directly to support -o and -f flags properly
+        if not os.path.exists(self.apktool_jar):
+            print(f"[-] Error: {self.apktool_jar} not found.")
+            return False
+
+        try:
+            # Command: java -jar apktool.jar d <apk> -o <out> -f
+            cmd = ["java", "-jar", self.apktool_jar, "d", self.apk_path, "-o", self.output_dir, "-f"]
+            subprocess.run(cmd, check=True, shell=True, capture_output=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"[-] Decompilation failed: {e.stderr.decode(errors='ignore')}")
+            return False
+
+    def find_manifest_risks(self):
+        """Parses AndroidManifest.xml for dangerous permissions and exported components"""
+        risks = {"permissions": [], "exported_components": [], "debuggable": False}
+        if not os.path.exists(self.manifest_path):
+            return risks
+
+        try:
+            tree = ET.parse(self.manifest_path)
+            root = tree.getroot()
+            
+            # Check if debuggable
+            application = root.find('application')
+            if application is not None:
+                debuggable = application.get('{http://schemas.android.com/apk/res/android}debuggable')
+                if debuggable == "true":
+                    risks["debuggable"] = True
+
+            # Check for dangerous permissions
+            dangerous_perms = [
+                "android.permission.READ_SMS", "android.permission.RECEIVE_SMS",
+                "android.permission.READ_CONTACTS", "android.permission.CAMERA",
+                "android.permission.ACCESS_FINE_LOCATION", "android.permission.RECORD_AUDIO"
+            ]
+            for perm in root.findall('uses-permission'):
+                name = perm.get('{http://schemas.android.com/apk/res/android}name')
+                if name in dangerous_perms:
+                    risks["permissions"].append(name)
+
+            # Check for exported components
+            for tag in ['activity', 'service', 'receiver', 'provider']:
+                for comp in application.findall(tag):
+                    exported = comp.get('{http://schemas.android.com/apk/res/android}exported')
+                    name = comp.get('{http://schemas.android.com/apk/res/android}name')
+                    if exported == "true":
+                        risks["exported_components"].append({"type": tag, "name": name})
+        except Exception as e:
+            print(f"[-] Error parsing manifest: {e}")
+        
+        return risks
+
     def find_security_logic(self):
-        """Searches for SSL pinning, root detection, API keys, and endpoints"""
+        """Comprehensive scan for security logic, secrets, and insecure patterns"""
         patterns = {
             "ssl_pinning": [
-                r"X509TrustManager",
-                r"checkClientTrusted",
-                r"checkServerTrusted",
-                r"SSLContext",
-                r"CertificatePinner"
+                r"X509TrustManager", r"checkServerTrusted", r"CertificatePinner", r"OkHttpClient"
             ],
             "root_detection": [
-                r"/system/app/Superuser.apk",
-                r"root-checker",
-                r"which su",
-                r"test-keys"
+                r"/system/app/Superuser.apk", r"root-checker", r"which su", r"test-keys", r"bin/su"
             ],
-            "api_keys": [
-                r"AIza[0-9A-Za-z\\-_]{35}", # Google API Key
-                r"key-[0-9a-zA-Z]{32}",      # Mailgun API Key
-                r"SK[0-9a-fA-F]{32}",        # Twilio API Key
-                r"(?:api_key|apiKey|client_secret|firebase_url|google_api_key|google_crash_reporting_api_key)[\"':\s=]+[a-zA-Z0-9_\-]+"
+            "hardcoded_secrets": [
+                r"AIza[0-9A-Za-z-_]{35}", 
+                r"AKIA[0-9A-Z]{16}",       
+                r"https://.*\.firebaseio\.com",
+                r"-----BEGIN RSA PRIVATE KEY-----"
             ],
-            "endpoints": [
-                r"https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9./?=_-]*)?"
+            "insecure_webview": [
+                r"setJavaScriptEnabled\(1\)", r"setAllowFileAccess\(1\)"
             ]
         }
         
-        # Packages to ignore to reduce noise (standard libraries)
-        ignored_packages = [
-            "androidx", "android/support", "com/google", "com/facebook",
-            "kotlin", "kotlinx", "okhttp3", "okio", "com/swmansion",
-            "org/bouncycastle", "expo/modules", "com/caverock", "com/adobe",
-            "com/salesforce", "com/pnp", "com/th3rdwave", "org/brotli",
-            "com/sslpublickeypinning", "com/horcrux", "com/BV", "com/reactnative",
-            "com/dieam", "com/rnfs", "com/learnium", "com/masteratul"
-        ]
-
-        # Endpoints to ignore (common library/system URLs)
-        ignored_endpoints = [
-            "schemas.android.com", "google.com", "github.com", "apache.org",
-            "www.w3.org", "android.os.Build", "bouncycastle.org", "xml.org",
-            "expo.dev", "filesystem.local", "android.com", "stackoverflow.com",
-            "w3.org", "apple.com", "microsoft.com"
-        ]
-
-        results = []
+        results = {"manifest_risks": self.find_manifest_risks(), "smali_findings": []}
         if not os.path.exists(self.output_dir):
             return results
 
         for root, dirs, files in os.walk(self.output_dir):
-            rel_root = os.path.relpath(root, self.output_dir)
-            parts = rel_root.split(os.sep)
-
-            # Identify actual package path
-            if parts[0].startswith("smali"):
-                clean_package_path = "/".join(parts[1:])
-            else:
-                clean_package_path = rel_root
-
             for file in files:
-                # We now scan Smali for logic, and XML/JSON/Smali for keys/endpoints
-                is_smali = file.endswith(".smali")
-                is_config = file.endswith(".xml") or file.endswith(".json") or file == "app.config"
-
-                if not (is_smali or is_config):
-                    continue
-
-                file_path = os.path.join(root, file)
-
-                # Noise reduction: Skip library Smali files
-                if is_smali and any(clean_package_path.startswith(pkg) for pkg in ignored_packages):
-                    continue
-
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-
-                    # Metadata skip for Smali
-                    metadata_start = -1
-                    metadata_end = -1
-                    if is_smali and ".annotation runtime Lkotlin/Metadata;" in content:
-                        metadata_start = content.find(".annotation runtime Lkotlin/Metadata;")
-                        metadata_end = content.find(".end annotation", metadata_start)
-
-                    for category, regex_list in patterns.items():
-                        # Logic patterns only for Smali
-                        if category in ["ssl_pinning", "root_detection"] and not is_smali:
-                            continue
-
-                        for regex in regex_list:
-                            for match in re.finditer(regex, content, re.IGNORECASE):
-                                m_start = match.start()
-                                matched_val = match.group()
-
-                                if metadata_start != -1 and metadata_start <= m_start <= metadata_end:
-                                    continue
-
-                                if category == "endpoints":
-                                    if any(ign in matched_val for ign in ignored_endpoints):
-                                        continue
-                                    # Basic URL validation to avoid snippets
-                                    if len(matched_val) < 10:
-                                        continue
-
-                                # Capture context
-                                if is_smali:
-                                    start = max(0, content.rfind('.method', 0, m_start))
-                                    end = content.find('.end method', match.end())
-                                    if end != -1: end += 11
-                                    else: end = match.end() + 50
-                                else:
-                                    # For XML/JSON, just take a small window
-                                    start = max(0, m_start - 40)
-                                    end = min(len(content), match.end() + 40)
-
-                                results.append({
-                                    "file": file_path,
-                                    "category": category,
-                                    "code": content[start:end].strip(),
-                                    "match": matched_val
-                                })
+                if file.endswith(".smali"):
+                    file_path = os.path.join(root, file)
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        for category, regex_list in patterns.items():
+                            for regex in regex_list:
+                                if re.search(regex, content, re.IGNORECASE):
+                                    match = re.search(regex, content, re.IGNORECASE)
+                                    start = max(0, content.rfind('.method', 0, match.start()))
+                                    end = content.find('.end method', match.end()) + 11
+                                    if start != -1 and end != -1:
+                                        results["smali_findings"].append({
+                                            "file": os.path.relpath(file_path, self.output_dir),
+                                            "category": category,
+                                            "code": content[start:end]
+                                        })
         return results
-
