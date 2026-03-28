@@ -1,6 +1,6 @@
 # APex: AI-Powered APK Explorer and Exfiltrator
 
-**APex** is an advanced Android security orchestration suite and a robust wrapper for the Frida framework. It is designed to bridge the gap between static analysis and dynamic instrumentation. By integrating Large Language Models (LLMs) directly into the reverse-engineering workflow, APex automates the discovery and bypassing of complex security controls like SSL pinning and root detection.
+**APex** is an *AI-powered* advanced Android security orchestration suite and a robust wrapper for the Frida framework. It is designed to bridge the gap between static analysis and dynamic instrumentation. By integrating Large Language Models (LLMs) directly into the reverse-engineering workflow, APex automates the discovery and bypassing of complex security controls like SSL pinning and root detection.
 
 ---
 
