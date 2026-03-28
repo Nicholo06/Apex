@@ -4,16 +4,6 @@ APex is an advanced Android security orchestration suite and a robust wrapper fo
 
 ---
 
-## Table of Contents
-- Project Goals
-- Key Features
-- Getting Started
-- Usage Guide
-- Contributing
-- Disclaimer
-
----
-
 ## Project Goals
 
 The goal of APex is to reduce the manual effort required during mobile application penetration tests by:
