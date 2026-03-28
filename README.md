@@ -72,13 +72,19 @@ python apex.py
 Select **Option 1** and provide the path to your APK. APex will decompile it and generate a comprehensive security report covering manifest misconfigurations, hardcoded secrets, and insecure code patterns.
 
 ### 2. Inject Frida Script
-Select **Option 2** to inject a script into a running app. APex will list installed 3rd-party packages and available scripts for selection. It then launches the app using the Frida framework wrapper.
+Select **Option 2** to inject a script into a running app. APex will list installed 3rd-party packages and available scripts for selection. It then launches the app using the Frida framework wrapper and automatically terminates the process upon exit.
 
 ### 3. Generate AI Hook
 Select **Option 3** if you encounter a security check that standard scripts cannot bypass. Provide the path to a text file containing the Smali code, and APex will use AI to generate a surgical Frida hook.
 
 ### 4. Exfiltrate Data
 Select **Option 4** to dump internal app data. APex pulls databases and native libraries from the device and saves them to the local downloads folder.
+
+### 5. List Local Scripts
+Select **Option 5** to view all JavaScript files currently available in your local script library.
+
+### 6. Select/Change Device
+Select **Option 6** to automatically detect connected Android devices or emulators and switch the active target for all operations.
 
 ---
 
