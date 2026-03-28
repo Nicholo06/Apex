@@ -1,12 +1,12 @@
 # APex: AI-Powered APK Explorer and Exfiltrator
 
-APex is an advanced Android security orchestration suite and a robust wrapper for the Frida framework. It is designed to bridge the gap between static analysis and dynamic instrumentation. By integrating Large Language Models (LLMs) directly into the reverse-engineering workflow, APex automates the discovery and bypassing of complex security controls like SSL pinning and root detection.
+**APex** is an advanced Android security orchestration suite and a robust wrapper for the Frida framework. It is designed to bridge the gap between static analysis and dynamic instrumentation. By integrating Large Language Models (LLMs) directly into the reverse-engineering workflow, APex automates the discovery and bypassing of complex security controls like SSL pinning and root detection.
 
 ---
 
 ## Project Goals
 
-The goal of APex is to reduce the manual effort required during mobile application penetration tests by:
+The goal of **APex** is to reduce the manual effort required during mobile application penetration tests by:
 * Automating the Boring Stuff: Fast-track APK decompilation, secret sniffing, and permission auditing.
 * Bridging RE Gaps with AI: Use AI to interpret obfuscated Smali logic and generate functional Frida hooks.
 * Centralizing Exfiltration: Provide a one-click solution for dumping sensitive app data (databases, native libs, configurations).
@@ -63,7 +63,7 @@ The goal of APex is to reduce the manual effort required during mobile applicati
 
 ## Usage Guide
 
-APex is an interactive, menu-driven CLI. To start the tool, run:
+To start the tool, run:
 ```bash
 python apex.py
 ```
@@ -88,4 +88,4 @@ Contributions are welcome. Please feel free to submit a Pull Request.
 ---
 
 ## Disclaimer
-APex is intended for authorized security auditing and educational purposes only. Unauthorized access to computer systems is illegal. The author is not responsible for any misuse of this tool.
+**APex** is intended for authorized security auditing and educational purposes only. Unauthorized access to computer systems is illegal. The author is not responsible for any misuse of this tool.
