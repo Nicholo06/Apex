@@ -84,7 +84,7 @@ python apex.py
 ```
 
 ### 1. Scan APK
-Select **Option 1** and provide the path to your APK. APex will decompile it and display a JSON summary of security-related code blocks found in the Smali files.
+Select **Option 1** and provide the path to your APK. APex will decompile it and generate a comprehensive security report covering manifest misconfigurations, hardcoded secrets, and insecure code patterns.
 
 ### 2. Inject Frida Script
 Select **Option 2** to inject a script into a running app. APex will ask for the package name (e.g., `com.example.app`) and the name of the script from your `frida-scripts/` folder.
