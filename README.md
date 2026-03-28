@@ -12,18 +12,18 @@
 
 ---
 
-## Table of Contents
-- [Project Goals](#-project-goals)
-- [Key Features](#-key-features)
-- [Tech Stack](#-tech-stack)
-- [Getting Started](#-getting-started)
-- [Usage Guide](#-usage-guide)
-- [Contributing](#-contributing)
-- [Disclaimer](#-disclaimer)
+## 📖 Table of Contents
+- [🎯 Project Goals](#-project-goals)
+- [✨ Key Features](#-key-features)
+- [🚀 Getting Started](#-getting-started)
+- [📖 Usage Guide](#-usage-guide)
+- [🤝 Contributing](#-contributing)
+- [⚖️ Disclaimer](#-disclaimer)
 
 ---
 
-## Project Goals
+## 🎯 Project Goals
+
 The goal of APex is to reduce the manual effort required during mobile application penetration tests by:
 *   **Automating the "Boring" Stuff:** Fast-track APK decompilation, secret sniffing, and permission auditing.
 *   **Bridging RE Gaps with AI:** Use AI to interpret obfuscated Smali logic and generate functional Frida hooks.
@@ -51,17 +51,8 @@ The goal of APex is to reduce the manual effort required during mobile applicati
 
 ---
 
-## Tech Stack
-| Category | Tools/Frameworks |
-| :--- | :--- |
-| **Language** | Python 3.10+ |
-| **Analysis** | Frida-Tools, PyApktool, Scapy |
-| **AI** | Google GenAI (Gemini 2.0 Flash) |
-| **Exfiltration** | ADB (Android Debug Bridge) |
+## 🚀 Getting Started
 
----
-
-## Getting Started
 
 ### Prerequisites
 - Python 3.10+
