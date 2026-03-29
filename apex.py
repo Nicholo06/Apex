@@ -31,12 +31,10 @@ def print_header(current_session=None):
         if line.strip():
             print(INDENT + line)
     print()
-    
     status = "CONNECTED" if config.ACTIVE_DEVICE_ID else "NOT CONNECTED"
     dev_id = config.ACTIVE_DEVICE_ID if config.ACTIVE_DEVICE_ID else "None"
     print(INDENT + f"[ STATUS: {status} | DEVICE: {dev_id} ]")
-    if current_session:
-        print(INDENT + f"[ ACTIVE SESSION: {current_session} ]")
+    if current_session: print(INDENT + f"[ ACTIVE SESSION: {current_session} ]")
     print()
 
 def c_input(prompt_text="", newline=True, indicator="> "):
@@ -44,8 +42,7 @@ def c_input(prompt_text="", newline=True, indicator="> "):
         if newline:
             print(INDENT + f"{prompt_text}")
             return input(INDENT + indicator).strip()
-        else:
-            return input(INDENT + f"{prompt_text} {indicator}").strip()
+        else: return input(INDENT + f"{prompt_text} {indicator}").strip()
     return input(INDENT + indicator).strip()
 
 def print_progress_bar(current, total, prefix="Analyzing APK"):
@@ -117,9 +114,7 @@ def print_report(data):
     print("\n" + INDENT + "=" * 60)
 
 def select_package():
-    if not config.ACTIVE_DEVICE_ID:
-        print(INDENT + "[-] No device connected. Use Option 2 first.")
-        return None
+    if not config.ACTIVE_DEVICE_ID: return None
     packages = list_installed_packages(config.ACTIVE_DEVICE_ID)
     if not packages: return None
     print(INDENT + "[ SELECT PACKAGE ]")
@@ -146,7 +141,6 @@ def explore_loot_workflow(package_name):
     if not files:
         print(INDENT + "[-] No files found in this session.")
         return
-    
     print(f"\n{INDENT}[ FILES IN {package_name} ]")
     for i, f in enumerate(files): print(INDENT + f"{i+1}. {f}")
     print()
@@ -167,36 +161,44 @@ def explore_loot_workflow(package_name):
 def interactive_menu():
     devices = list_adb_devices()
     if devices: config.ACTIVE_DEVICE_ID = devices[0]["id"]
-    
     current_session = None
 
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print_header(current_session)
-        
         print(INDENT + "[ MAIN MENU ]")
-        print(INDENT + "1. Scan APK (Static Analysis)")
+        print(INDENT + "1. Scan APK")
         print(INDENT + "2. Select/Change Device")
-        
-        # Only show advanced tools if a scan has been performed
         if current_session:
             print(INDENT + "3. Inject Frida Script (Dynamic)")
             print(INDENT + "4. Exfiltrate & Explore Loot")
             print(INDENT + "5. Hook Template Generator")
             print(INDENT + "6. List Local Scripts")
-        
         print(INDENT + "0. Exit")
         print("\n" + INDENT + "-" * 20)
         choice = c_input("Select an option")
         print()
 
         if choice == '1':
-            dir_name = select_previous_session()
-            if dir_name:
-                current_session = dir_name
-                scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, dir_name))
-                print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
-            else:
+            print(INDENT + "[ SCAN OPTIONS ]")
+            print(INDENT + "1. Load Previous Session")
+            print(INDENT + "2. Analyze New APK")
+            sub_choice = c_input("Select an option")
+            
+            if sub_choice == '1':
+                dir_name = select_previous_session()
+                if dir_name:
+                    current_session = dir_name
+                    scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, dir_name))
+                    report = scanner.load_cached_report()
+                    if report:
+                        print(INDENT + "[*] Loading cached report...")
+                        print_report(report)
+                    else:
+                        print(INDENT + "[*] No cached report. Running scan...")
+                        print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
+                else: print(INDENT + "[-] No previous sessions found.")
+            elif sub_choice == '2':
                 path = c_input("Enter APK path")
                 if os.path.exists(path):
                     scanner = APKScanner(apk_path=path)
@@ -204,6 +206,7 @@ def interactive_menu():
                         current_session = os.path.basename(scanner.output_dir)
                         print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
                     else: print(INDENT + "[-] Decompilation failed.")
+                else: print(INDENT + "[-] File not found.")
             c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '2':
@@ -239,7 +242,6 @@ def interactive_menu():
                 for r in results:
                     status = "V" if r['status'] == 'pulled' else "X"
                     print(f"{INDENT}  {status} {r['target']}")
-                
                 print(f"\n{INDENT}[*] Entering Loot Explorer for {pkg}...")
                 explore_loot_workflow(pkg)
             c_input("Press Enter to return to menu", newline=False, indicator="")
@@ -256,11 +258,10 @@ def interactive_menu():
                 code = templates.generate_hook(name)
                 fname = name.lower().replace(" ", "_").replace("(", "").replace(")", "") + ".js"
                 path = templates.save_hook(code, fname)
-                print(f"\n{INDENT}[+] Template generated and saved to: {path}")
-                print(INDENT + "-" * 20)
+                print(f"\n{INDENT}[+] Template generated and saved to: {path}\n{INDENT}" + "-" * 20)
                 for line in code.split('\n'): print(INDENT + line)
                 print(INDENT + "-" * 20)
-            except: print(INDENT + "[-] Invalid selection.")
+            except: pass
             c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '6' and current_session:
@@ -275,10 +276,6 @@ def main():
     parser = argparse.ArgumentParser(description="🛡️  APex CLI", add_help=False)
     parser.add_argument('-h', '--help', action='help')
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("scan").add_argument("apk_path")
-    subparsers.add_parser("inject").add_argument("package_name")
-    subparsers.add_parser("list-scripts")
-    subparsers.add_parser("exfiltrate").add_argument("package_name")
     if len(sys.argv) == 1: interactive_menu()
     else:
         args = parser.parse_args()
