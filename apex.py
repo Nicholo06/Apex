@@ -34,7 +34,8 @@ def print_header(current_session=None):
     status = "CONNECTED" if config.ACTIVE_DEVICE_ID else "NOT CONNECTED"
     dev_id = config.ACTIVE_DEVICE_ID if config.ACTIVE_DEVICE_ID else "None"
     print(INDENT + f"[ STATUS: {status} | DEVICE: {dev_id} ]")
-    if current_session: print(INDENT + f"[ ACTIVE SESSION: {current_session} ]")
+    if current_session:
+        print(INDENT + f"[ ACTIVE SESSION: {current_session} ]")
     print()
 
 def c_input(prompt_text="", newline=True, indicator="> "):
@@ -161,70 +162,78 @@ def explore_loot_workflow(package_name):
 def interactive_menu():
     devices = list_adb_devices()
     if devices: config.ACTIVE_DEVICE_ID = devices[0]["id"]
-    current_session = None
+    current_session = None # Directory name of decompiled app
+    active_pkg = None      # Actual package name for ADB/Frida
 
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print_header(current_session)
         print(INDENT + "[ MAIN MENU ]")
-        print(INDENT + "1. Scan APK")
-        print(INDENT + "2. Select/Change Device")
-        if current_session:
-            print(INDENT + "3. Inject Frida Script (Dynamic)")
-            print(INDENT + "4. Exfiltrate & Explore Loot")
-            print(INDENT + "5. Hook Template Generator")
-            print(INDENT + "6. List Local Scripts")
-        print(INDENT + "0. Exit")
+        
+        if not current_session:
+            print(INDENT + "1. Scan New APK")
+            print(INDENT + "2. Load Previous Session")
+            print(INDENT + "3. Select/Change Device")
+            print(INDENT + "0. Exit")
+        else:
+            print(INDENT + "1. View/Rescan Security Report")
+            print(INDENT + "2. Inject Frida Script (Dynamic)")
+            print(INDENT + "3. Exfiltrate & Explore Loot")
+            print(INDENT + "4. Hook Template Generator")
+            print(INDENT + "5. Switch App / New Scan")
+            print(INDENT + "6. Select/Change Device")
+            print(INDENT + "0. Exit")
+
         print("\n" + INDENT + "-" * 20)
         choice = c_input("Select an option")
         print()
 
-        if choice == '1':
-            print(INDENT + "[ SCAN OPTIONS ]")
-            print(INDENT + "1. Load Previous Session")
-            print(INDENT + "2. Analyze New APK")
-            sub_choice = c_input("Select an option")
-            
-            if sub_choice == '1':
-                dir_name = select_previous_session()
-                if dir_name:
-                    current_session = dir_name
-                    scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, dir_name))
-                    report = scanner.load_cached_report()
-                    if report:
-                        print(INDENT + "[*] Loading cached report...")
-                        print_report(report)
-                    else:
-                        print(INDENT + "[*] No cached report. Running scan...")
-                        print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
-                else: print(INDENT + "[-] No previous sessions found.")
-            elif sub_choice == '2':
+        # Logic for NO SESSION
+        if not current_session:
+            if choice == '1':
                 path = c_input("Enter APK path")
                 if os.path.exists(path):
                     scanner = APKScanner(apk_path=path)
                     if run_task_with_loading(scanner.decompile, prefix="Decompiling APK"):
                         current_session = os.path.basename(scanner.output_dir)
                         print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
-                    else: print(INDENT + "[-] Decompilation failed.")
+                        c_input("Press Enter to continue", newline=False, indicator="")
                 else: print(INDENT + "[-] File not found.")
-            c_input("Press Enter to return to menu", newline=False, indicator="")
+            elif choice == '2':
+                dir_name = select_previous_session()
+                if dir_name:
+                    current_session = dir_name
+            elif choice == '3':
+                devices = list_adb_devices()
+                if devices:
+                    print(INDENT + "[ SELECT DEVICE ]")
+                    for i, dev in enumerate(devices): print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
+                    print()
+                    sel = c_input("Enter number")
+                    try: config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
+                    except: pass
+            elif choice == '0': break
 
-        elif choice == '2':
-            devices = list_adb_devices()
-            if devices:
-                print(INDENT + "[ SELECT DEVICE ]")
-                for i, dev in enumerate(devices): print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
-                print()
-                sel = c_input("Enter number")
-                try: config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
-                except: pass
-
-        elif choice == '3' and current_session:
-            pkg = select_package()
-            if pkg:
-                orch = FridaOrchestrator(pkg)
-                scripts = orch.list_scripts()
-                if scripts:
+        # Logic for ACTIVE SESSION
+        else:
+            if choice == '1':
+                scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, current_session))
+                report = scanner.load_cached_report()
+                if report:
+                    print(INDENT + "[*] Loading cached report...")
+                    print_report(report)
+                else:
+                    print(INDENT + "[*] Running scan...")
+                    print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
+                c_input("Press Enter to continue", newline=False, indicator="")
+            
+            elif choice == '2': # Inject
+                # Try to resolve package name from session folder if not set
+                if not active_pkg: active_pkg = select_package()
+                if active_pkg:
+                    orch = FridaOrchestrator(active_pkg)
+                    scripts = orch.list_scripts()
+                    print(INDENT + f"[ TARGET: {active_pkg} ]")
                     print(INDENT + "[ SELECT SCRIPT ]")
                     for i, s in enumerate(scripts): print(INDENT + f"{i+1}. {s}")
                     print()
@@ -232,45 +241,52 @@ def interactive_menu():
                     try: orch.attach_and_inject(scripts[int(s_sel)-1])
                     except: pass
 
-        elif choice == '4' and current_session:
-            pkg = select_package()
-            if pkg:
-                dumper = ADBDumper(pkg)
-                print(f"{INDENT}[*] Pulling data from {pkg}...")
-                results = dumper.pull_data()
-                print("\n" + INDENT + "[+] Exfiltration Results:")
-                for r in results:
-                    status = "V" if r['status'] == 'pulled' else "X"
-                    print(f"{INDENT}  {status} {r['target']}")
-                print(f"\n{INDENT}[*] Entering Loot Explorer for {pkg}...")
-                explore_loot_workflow(pkg)
-            c_input("Press Enter to return to menu", newline=False, indicator="")
+            elif choice == '3': # Exfiltrate
+                if not active_pkg: active_pkg = select_package()
+                if active_pkg:
+                    dumper = ADBDumper(active_pkg)
+                    print(f"{INDENT}[*] Pulling data from {active_pkg}...")
+                    results = dumper.pull_data()
+                    print("\n" + INDENT + "[+] Exfiltration Results:")
+                    for r in results:
+                        status = "V" if r['status'] == 'pulled' else "X"
+                        print(f"{INDENT}  {status} {r['target']}")
+                    print(f"\n{INDENT}[*] Entering Loot Explorer...")
+                    explore_loot_workflow(active_pkg)
+                    c_input("Press Enter to continue", newline=False, indicator="")
 
-        elif choice == '5' and current_session:
-            templates = HookTemplates()
-            list_t = templates.list_templates()
-            print(INDENT + "[ SELECT HOOK TEMPLATE ]")
-            for i, t in enumerate(list_t): print(INDENT + f"{i+1}. {t}")
-            print()
-            t_sel = c_input("Enter number")
-            try:
-                name = list_t[int(t_sel)-1]
-                code = templates.generate_hook(name)
-                fname = name.lower().replace(" ", "_").replace("(", "").replace(")", "") + ".js"
-                path = templates.save_hook(code, fname)
-                print(f"\n{INDENT}[+] Template generated and saved to: {path}\n{INDENT}" + "-" * 20)
-                for line in code.split('\n'): print(INDENT + line)
-                print(INDENT + "-" * 20)
-            except: pass
-            c_input("Press Enter to return to menu", newline=False, indicator="")
+            elif choice == '4': # Templates
+                templates = HookTemplates()
+                list_t = templates.list_templates()
+                print(INDENT + "[ SELECT HOOK TEMPLATE ]")
+                for i, t in enumerate(list_t): print(INDENT + f"{i+1}. {t}")
+                print()
+                t_sel = c_input("Enter number")
+                try:
+                    name = list_t[int(t_sel)-1]
+                    code = templates.generate_hook(name)
+                    fname = name.lower().replace(" ", "_").replace("(", "").replace(")", "") + ".js"
+                    path = templates.save_hook(code, fname)
+                    print(f"\n{INDENT}[+] Template generated and saved to: {path}\n{INDENT}" + "-" * 20)
+                    for line in code.split('\n'): print(INDENT + line)
+                    print(INDENT + "-" * 20)
+                except: pass
+                c_input("Press Enter to continue", newline=False, indicator="")
 
-        elif choice == '6' and current_session:
-            scripts = FridaOrchestrator(None).list_scripts()
-            print("\n" + INDENT + "[+] Script Library:\n")
-            for s in scripts: print(INDENT + f"  - {s}")
-            c_input("Press Enter to return to menu", newline=False, indicator="")
-
-        elif choice == '0': break
+            elif choice == '5':
+                current_session = None
+                active_pkg = None
+            
+            elif choice == '6':
+                devices = list_adb_devices()
+                if devices:
+                    print(INDENT + "[ SELECT DEVICE ]")
+                    for i, dev in enumerate(devices): print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
+                    print()
+                    sel = c_input("Enter number")
+                    try: config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
+                    except: pass
+            elif choice == '0': break
 
 def main():
     parser = argparse.ArgumentParser(description="🛡️  APex CLI", add_help=False)
@@ -278,9 +294,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
     if len(sys.argv) == 1: interactive_menu()
     else:
-        args = parser.parse_args()
-        if args.command == "scan":
-            scanner = APKScanner(args.apk_path)
-            if scanner.decompile(): print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
+        # Command line arg support here...
+        pass
 
 if __name__ == "__main__": main()
