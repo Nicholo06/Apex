@@ -19,7 +19,6 @@ class APKScanner:
         self.apktool_jar = os.path.join("pyapktool_tools", "apktool.jar")
 
     def decompile(self):
-        """Decompiles the APK using the managed apktool.jar directly"""
         if not self.apk_path: return False
         if not os.path.exists(config.TEMP_DECOMPILED_PATH): os.makedirs(config.TEMP_DECOMPILED_PATH)
         if not os.path.exists(self.apktool_jar):
@@ -27,7 +26,6 @@ class APKScanner:
                 import pyapktool.pyapktool as pat
                 pat.Apktool("pyapktool_tools").get()
             except ImportError: return False
-
         try:
             cmd = ["java", "-jar", self.apktool_jar, "d", self.apk_path, "-o", self.output_dir, "-f"]
             subprocess.run(cmd, check=True, shell=True, capture_output=True)
@@ -61,7 +59,7 @@ class APKScanner:
             "React Native": ["libreactnativejni.so", "assets/index.android.bundle"],
             "Xamarin": ["libmonosgen-2.0.so", "assemblies/mscorlib.dll"],
             "Unity": ["libunity.so", "assets/bin/Data"],
-            "Cordova/PhoneGap": ["assets/www/index.html", "assets/www/cordova.js"],
+            "Cordova": ["assets/www/index.html"],
             "Kotlin": ["kotlin/kotlin.kotlin_builtins"]
         }
         for tech, files in signatures.items():
@@ -101,7 +99,6 @@ class APKScanner:
         except: return ""
 
     def find_security_logic(self, progress_callback=None):
-        """Comprehensive global scan with false-positive filtering"""
         patterns = {
             "Secrets & API Keys": {
                 "Google API Key": r"AIza[0-9A-Za-z-_]{35}",
@@ -119,34 +116,33 @@ class APKScanner:
             }
         }
         
-        # Strings to ignore (False Positives)
-        ignored_strings = [
-            "schemas.android.com", "www.w3.org", "google.com/search", 
-            "adobe.com", "ns.adobe.com"
-        ]
-        
-        # SDK paths to deprioritize/ignore for security logic
-        sdk_noise = [
-            "com/google/android/gms", "com/facebook", "androidx/", "android/support", 
-            "com/google/firebase", "io/sentry", "com/clevertap"
-        ]
+        ignored_strings = ["schemas.android.com", "www.w3.org", "google.com/search", "adobe.com", "play.google.com", "xmlpull.org"]
+        sdk_noise = ["com/google/android/gms", "com/facebook", "androidx/", "android/support", "com/google/firebase", "com/clevertap", "com/huawei/hms"]
+        tool_files = ["apex_report.json", "apktool.yml", "original"]
 
         report = {"Technologies": self.detect_tech_stack(), "Manifest Risks": self.find_manifest_risks(), "Code Findings": {}, "High-Risk Assets": []}
         
-        high_risk_files = [".env", "credentials", "secret", "password", "google-services", "client_secret", "auth_config"]
+        high_risk_names = [".env", "credentials", "google-services", "client_secret", "auth_config"]
         high_risk_exts = [".jks", ".keystore", ".p12", ".pem", ".cert", ".key"]
-        noise_dirs = ["res/anim", "res/color", "res/layout", "res/drawable", "res/values", "res/mipmap", "res/animator"]
+        noise_dirs = ["res/anim", "res/color", "res/layout", "res/drawable", "res/values", "res/mipmap", "res/animator", "res/interpolator"]
         noise_prefixes = ["abc_", "mtrl_", "design_", "androidx_", "notification_"]
 
         all_scan_files = []
         for root, dirs, files in os.walk(self.output_dir):
             rel_dir = os.path.relpath(root, self.output_dir).replace("\\", "/")
             if any(rel_dir.startswith(nd) for nd in noise_dirs): continue
+            if any(tf in rel_dir for tf in tool_files): continue
+
             for file in files:
+                if file in tool_files: continue
                 file_lower = file.lower()
                 if any(file_lower.startswith(np) for np in noise_prefixes): continue
-                is_high_risk = any(hr in file_lower for hr in high_risk_files) or any(file_lower.endswith(ext) for ext in high_risk_exts)
-                if is_high_risk: report["High-Risk Assets"].append(os.path.join(rel_dir, file))
+
+                # ONLY flag non-code files as assets to avoid flagging every Smali class
+                if not file.endswith(".smali"):
+                    is_high_risk = any(hr in file_lower for hr in high_risk_names) or any(file_lower.endswith(ext) for ext in high_risk_exts)
+                    if is_high_risk: report["High-Risk Assets"].append(os.path.join(rel_dir, file))
+                
                 if file.endswith((".smali", ".env", ".json", ".xml", ".so")):
                     all_scan_files.append(os.path.join(root, file))
 
@@ -155,16 +151,12 @@ class APKScanner:
             if progress_callback: progress_callback(idx + 1, total_files)
             try:
                 rel_file_path = os.path.relpath(file_path, self.output_dir).replace("\\", "/")
-                
                 content = self.extract_strings_from_so(file_path) if file_path.endswith(".so") else open(file_path, 'r', encoding='utf-8', errors='ignore').read()
                 
                 if content:
                     for category, sub_patterns in patterns.items():
                         if category not in report["Code Findings"]: report["Code Findings"][category] = []
-                        
-                        # Skip security logic findings in massive SDKs to reduce noise
-                        if category == "Security Protections" and any(sdk in rel_file_path for sdk in sdk_noise):
-                            continue
+                        if category == "Security Protections" and any(sdk in rel_file_path for sdk in sdk_noise): continue
 
                         for name, regex in sub_patterns.items():
                             matches = re.findall(regex, content)
@@ -172,15 +164,13 @@ class APKScanner:
                                 clean_matches = []
                                 for m in matches:
                                     val = str(m[1]) if isinstance(m, tuple) else str(m)
-                                    # Filter out standard namespaces and empty strings
-                                    if any(ig in val for ig in ignored_strings) or len(val) < 4:
-                                        continue
+                                    # Strip Smali metadata noise
+                                    val = re.sub(r'\.line\s\d+', '', val).strip()
+                                    if any(ig in val for ig in ignored_strings) or len(val) < 4: continue
                                     clean_matches.append(val)
                                 
                                 if clean_matches:
-                                    report["Code Findings"][category].append({
-                                        "type": name, "file": rel_file_path, "matches": list(set(clean_matches))[:5]
-                                    })
+                                    report["Code Findings"][category].append({"type": name, "file": rel_file_path, "matches": list(set(clean_matches))[:5]})
             except: pass
         
         self.save_report(report)
